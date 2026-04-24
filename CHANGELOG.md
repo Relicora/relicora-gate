@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 - 
 
+## [v0.1.2] - 2026-04-25
+### Added
+- GoDoc comments for all public API methods and user-facing package types
+- public documentation for `App`, `Router`, route registration, and middleware methods
+
+### Changed
+- improved package documentation and developer ergonomics
+
 ## [v0.1.1] - 2026-04-25
 ### Added
 - English `README.md` documentation

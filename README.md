@@ -2,6 +2,8 @@
 
 `relicora-gate` is a lightweight Go library for building HTTP applications with a simple router, middleware support, and nested routers.
 
+Current version: `v0.1.2`
+
 ## Overview
 
 The library provides:
