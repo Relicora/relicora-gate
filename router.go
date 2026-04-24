@@ -1,7 +1,6 @@
 package gate
 
 import (
-	"fmt"
 	"net/http"
 )
 
@@ -51,21 +50,17 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) Get(route string, handler func(w http.ResponseWriter, r *http.Request)) {
-	pattern := fmt.Sprintf("GET %s", route)
-	r.routerMux.HandleFunc(pattern, handler)
+	r.routerMux.HandleFunc(route, methodHandler(http.MethodGet, handler))
 }
 
 func (r *Router) Post(route string, handler func(w http.ResponseWriter, r *http.Request)) {
-	pattern := fmt.Sprintf("POST %s", route)
-	r.routerMux.HandleFunc(pattern, handler)
+	r.routerMux.HandleFunc(route, methodHandler(http.MethodPost, handler))
 }
 
 func (r *Router) Put(route string, handler func(w http.ResponseWriter, r *http.Request)) {
-	pattern := fmt.Sprintf("PUT %s", route)
-	r.routerMux.HandleFunc(pattern, handler)
+	r.routerMux.HandleFunc(route, methodHandler(http.MethodPut, handler))
 }
 
 func (r *Router) Delete(route string, handler func(w http.ResponseWriter, r *http.Request)) {
-	pattern := fmt.Sprintf("DELETE %s", route)
-	r.routerMux.HandleFunc(pattern, handler)
+	r.routerMux.HandleFunc(route, methodHandler(http.MethodDelete, handler))
 }
