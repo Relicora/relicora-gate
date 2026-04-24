@@ -1,9 +1,21 @@
 # Changelog
 
-Все заметные изменения в проекте `relicora-gate` документируются в этом файле.
+All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 - 
+
+## [v0.1.1] - 2026-04-25
+### Added
+- English `README.md` documentation
+- `.gitignore` entry for `coverage.out`
+- full unit test coverage for `App`, `Router`, middleware, and route methods
+
+### Fixed
+- corrected router route registration for `Router.Get`, `Router.Post`, `Router.Put`, and `Router.Delete`
+
+### Changed
+- updated documentation and repository metadata
 
 ## [v0.1.0] - 2026-04-20
 ### Added
