@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 - 
 
+## [v0.1.3] - 2026-04-25
+### Fixed
+- Corrected `WithAddr` + `WithPort` handling so the server address is resolved as `host:port` when a host is provided.
+
 ## [v0.1.2] - 2026-04-25
 ### Added
 - GoDoc comments for all public API methods and user-facing package types

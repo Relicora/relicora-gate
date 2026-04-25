@@ -31,6 +31,16 @@ func TestNewAppDefaultAndOptions(t *testing.T) {
 		t.Fatalf("expected address :9090, got %q", app.server.Addr)
 	}
 
+	app = New(WithAddr("127.0.0.1"), WithPort(8080))
+	if app.server.Addr != "127.0.0.1:8080" {
+		t.Fatalf("expected address 127.0.0.1:8080, got %q", app.server.Addr)
+	}
+
+	app = New(WithAddr("127.0.0.1:9090"), WithPort(8080))
+	if app.server.Addr != "127.0.0.1:8080" {
+		t.Fatalf("expected address 127.0.0.1:8080 when port overrides addr, got %q", app.server.Addr)
+	}
+
 	buffer := &bytes.Buffer{}
 	logger := log.New(buffer, "", 0)
 	app = New(WithLogger(logger))
