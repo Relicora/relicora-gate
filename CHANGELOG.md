@@ -2,8 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
-- 
+## [v0.2.0] - 2026-04-25
+### Added
+- New `middleware` package with request logger, panic recovery, and timeout middlewares.
+- Request logger now records response duration in log output.
 
 ## [v0.1.3] - 2026-04-25
 ### Fixed
