@@ -2,7 +2,7 @@
 
 `relicora-gate` is a lightweight Go library for building HTTP applications with a simple router, middleware support, and nested routers.
 
-Current version: `v0.1.3`
+Current version: `v0.2.0`
 
 ## Overview
 
@@ -14,6 +14,7 @@ The library provides:
 - middleware support for both `App` and each `Router`
 - nested routers via `App.NewRouter` and `Router.NewRouter`
 - automatic `405 Method Not Allowed` responses for wrong HTTP methods
+- a standalone `middleware` package for common middleware helpers
 
 ## Installation
 
@@ -57,6 +58,43 @@ func main() {
     api := app.NewRouter("/api")
     api.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
         w.Write([]byte("pong"))
+    })
+
+    log.Println("starting server")
+    app.ListenAndServe()
+}
+```
+
+## Middleware package
+
+The `middleware` package provides common middleware helpers for `relicora-gate`, including request logging with response duration.
+
+Example:
+
+```go
+package main
+
+import (
+    "log"
+    "net/http"
+    "time"
+
+    "github.com/Relicora/relicora-gate"
+    "github.com/Relicora/relicora-gate/middleware"
+)
+
+func main() {
+    app := gate.New(
+        gate.WithPort(8080),
+        gate.WithLogger(log.Default()),
+    )
+
+    app.AddMiddleware(middleware.RequestLogger(log.Default()))
+    app.AddMiddleware(middleware.Recoverer(log.Default()))
+    app.AddMiddleware(middleware.Timeout(5 * time.Second))
+
+    app.Get("/hello", func(w http.ResponseWriter, r *http.Request) {
+        w.Write([]byte("Hello from relicora-gate"))
     })
 
     log.Println("starting server")
