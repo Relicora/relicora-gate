@@ -5,7 +5,9 @@ package gate
 import (
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"strconv"
 )
 
 // AppOption is a functional configuration option for an App.
@@ -15,15 +17,16 @@ type AppOption func(*App)
 // Example: "127.0.0.1:8080".
 func WithAddr(addr string) AppOption {
 	return func(a *App) {
-		a.server.Addr = addr
+		a.addrOption = addr
 	}
 }
 
 // WithPort sets the port for the HTTP server.
-// The address is configured as ":<port>".
+// If WithAddr was also provided, the port is combined with the given host.
 func WithPort(port int) AppOption {
 	return func(a *App) {
-		a.server.Addr = fmt.Sprintf(":%d", port)
+		a.port = port
+		a.portSet = true
 	}
 }
 
@@ -43,6 +46,25 @@ type App struct {
 	rootMux     *http.ServeMux
 	middlewares []func(http.Handler) http.Handler
 	logger      *log.Logger
+	addrOption  string
+	port        int
+	portSet     bool
+}
+
+func (a *App) resolveAddr() string {
+	if a.addrOption == "" {
+		return fmt.Sprintf(":%d", a.port)
+	}
+
+	host, _, err := net.SplitHostPort(a.addrOption)
+	if err == nil {
+		if a.portSet {
+			return net.JoinHostPort(host, strconv.Itoa(a.port))
+		}
+		return a.addrOption
+	}
+
+	return net.JoinHostPort(a.addrOption, strconv.Itoa(a.port))
 }
 
 // New creates a new App with optional configuration options.
@@ -58,12 +80,16 @@ func New(opts ...AppOption) *App {
 		rootMux:     rootMux,
 		middlewares: make([]func(http.Handler) http.Handler, 0),
 		logger:      log.Default(),
+		addrOption:  "",
+		port:        8080,
+		portSet:     false,
 	}
 
 	for _, opt := range opts {
 		opt(app)
 	}
 
+	app.server.Addr = app.resolveAddr()
 	return app
 }
 
