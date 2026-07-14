@@ -3,6 +3,7 @@
 package gate
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -131,7 +132,7 @@ func (a *App) Delete(route string, handler func(w http.ResponseWriter, r *http.R
 
 // ListenAndServe applies registered middleware and starts the HTTP server.
 // This method blocks until the server exits.
-func (a *App) ListenAndServe() {
+func (a *App) ListenAndServe() error {
 	a.logger.Printf("[INFO]	Server starting...\n")
 	var handler http.Handler = a.rootMux
 	for i := len(a.middlewares) - 1; i >= 0; i-- {
@@ -139,5 +140,18 @@ func (a *App) ListenAndServe() {
 	}
 	a.server.Handler = handler
 	a.logger.Printf("[INFO]	Server started at \"%s\"\n", a.server.Addr)
-	a.server.ListenAndServe()
+	if err := a.server.ListenAndServe(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Shutdown gracefully shuts down the server without interrupting any active connections.
+// Shutdown works by first closing all open listeners, then closing all idle connections,
+// and then waiting indefinitely for connections to return to idle and then shut down.
+func (a *App) Shutdown(ctx context.Context) error {
+	if err := a.server.Shutdown(ctx); err != nil {
+		return err
+	}
+	return nil
 }
