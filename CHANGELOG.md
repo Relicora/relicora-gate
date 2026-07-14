@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.3.0] - 2026-07-14
+### Added
+- New `App` method `Shutdown`: perform graceful server shutdown
+
+### Fixed
+- Method `ListenAndServe` now return error 
+
 ## [v0.2.0] - 2026-04-25
 ### Added
 - New `middleware` package with request logger, panic recovery, and timeout middlewares.
