@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.4.0] - 2026-08-01
+### Added
+- parameterized routing with `:param` and `*path`
+- `Router.HandleFunc` for router-level handler functions
+- `Router.Group` alias for nested route groups
+- `RouteParams(r *http.Request)` helper for extracted route parameters
+- custom `404` and `405` handlers via `App.NotFoundHandler` and `App.MethodNotAllowedHandler`
+
+### Changed
+- centralized route matching in `routeManager` for consistent method/resolution behavior
+- `App.Handle` and `Router.Handle` now support normalized route registration with prefixes
+
 ## [v0.3.2] - 2026-08-01
 ### Added
 - `App.Handle` and `App.HandleFunc` for registering handlers with multiple HTTP methods

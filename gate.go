@@ -8,7 +8,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -47,7 +46,7 @@ func WithLogger(logger *log.Logger) AppOption {
 type App struct {
 	server      *http.Server
 	rootMux     *http.ServeMux
-	routeTable  map[string]map[string]http.Handler
+	routes      routeManager
 	middlewares []func(http.Handler) http.Handler
 	logger      *log.Logger
 	addrOption  string
@@ -112,7 +111,7 @@ func New(opts ...AppOption) *App {
 	app := &App{
 		server:      s,
 		rootMux:     rootMux,
-		routeTable:  make(map[string]map[string]http.Handler),
+		routes:      routeManager{},
 		middlewares: make([]func(http.Handler) http.Handler, 0),
 		logger:      log.Default(),
 		addrOption:  "",
@@ -134,6 +133,11 @@ func (a *App) AddMiddleware(middleware func(http.Handler) http.Handler) {
 	a.middlewares = append(a.middlewares, middleware)
 }
 
+// Use is an alias for AddMiddleware and is more idiomatic for middleware stacking.
+func (a *App) Use(middleware func(http.Handler) http.Handler) {
+	a.AddMiddleware(middleware)
+}
+
 func methodHandler(method string, handler func(w http.ResponseWriter, r *http.Request)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != method {
@@ -144,49 +148,46 @@ func methodHandler(method string, handler func(w http.ResponseWriter, r *http.Re
 	}
 }
 
-func allowMethods(methods map[string]http.Handler) string {
-	allowed := make([]string, 0, len(methods))
-	for method := range methods {
-		allowed = append(allowed, method)
-	}
-	sort.Strings(allowed)
-	return strings.Join(allowed, ", ")
-}
-
 func (a *App) addRoute(route, method string, handler http.Handler) {
-	route = normalizeRoute(route)
-
-	if a.routeTable == nil {
-		a.routeTable = make(map[string]map[string]http.Handler)
-	}
-
-	methodHandlers, ok := a.routeTable[route]
-	if !ok {
-		methodHandlers = make(map[string]http.Handler)
-		a.routeTable[route] = methodHandlers
-		a.rootMux.HandleFunc(route, func(w http.ResponseWriter, r *http.Request) {
-			a.serveRoute(route, w, r)
-		})
-	}
-
-	methodHandlers[method] = handler
+	a.routes.addRoute(route, method, handler)
 }
 
-func (a *App) serveRoute(route string, w http.ResponseWriter, r *http.Request) {
-	methodHandlers, ok := a.routeTable[route]
-	if !ok {
-		http.NotFound(w, r)
-		return
+func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	var final http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if a.routes.serve(w, r) {
+			return
+		}
+
+		cap := newCaptureResponseWriter()
+		a.rootMux.ServeHTTP(cap, r)
+		if cap.status != http.StatusNotFound {
+			cap.flushTo(w)
+			return
+		}
+
+		a.routes.notFound(w, r)
+	})
+
+	for i := len(a.middlewares) - 1; i >= 0; i-- {
+		final = a.middlewares[i](final)
 	}
 
-	handler, ok := methodHandlers[r.Method]
-	if ok {
-		handler.ServeHTTP(w, r)
-		return
-	}
+	final.ServeHTTP(w, r)
+}
 
-	w.Header().Set("Allow", allowMethods(methodHandlers))
-	http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+// NotFoundHandler registers a custom handler for unmatched routes.
+func (a *App) NotFoundHandler(handler func(w http.ResponseWriter, r *http.Request)) {
+	a.routes.setNotFoundHandler(http.HandlerFunc(handler))
+}
+
+// MethodNotAllowedHandler registers a custom handler for requests with an unsupported HTTP method.
+func (a *App) MethodNotAllowedHandler(handler func(w http.ResponseWriter, r *http.Request)) {
+	a.routes.setMethodNotAllowedHandler(http.HandlerFunc(handler))
+}
+
+// Group creates a child router under the specified prefix.
+func (a *App) Group(prefix string) *Router {
+	return a.NewRouter(prefix)
 }
 
 // Handle registers a handler for the given route and HTTP methods.
@@ -224,21 +225,12 @@ func (a *App) Delete(route string, handler func(w http.ResponseWriter, r *http.R
 	a.Handle(route, http.HandlerFunc(handler), http.MethodDelete)
 }
 
-// ServeHTTP applies registered middleware and serves the request.
-func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	var handler http.Handler = a.rootMux
-	for i := len(a.middlewares) - 1; i >= 0; i-- {
-		handler = a.middlewares[i](handler)
-	}
-	handler.ServeHTTP(w, r)
-}
-
 // ListenAndServe applies registered middleware and starts the HTTP server.
 // This method blocks until the server exits.
 func (a *App) ListenAndServe() error {
 	a.logger.Printf("[INFO]\tServer starting...\n")
 	a.server.Handler = a
-	a.logger.Printf("[INFO]	Server started at \"%s\"\n", a.server.Addr)
+	a.logger.Printf("[INFO]\tServer started at \"%s\"\n", a.server.Addr)
 	if err := a.server.ListenAndServe(); err != nil {
 		return err
 	}
