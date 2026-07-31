@@ -2,7 +2,7 @@
 
 `relicora-gate` is a lightweight Go library for building HTTP applications with a simple router, middleware support, and nested routers.
 
-Current version: `v0.4.0`
+Current version: `v0.4.1`
 
 ## Overview
 
@@ -10,8 +10,9 @@ The library provides:
 
 - `App` as the main HTTP application container
 - functional options for configuring address, port, and logger
-- `Handle`, `HandleFunc`, `Get`, `Post`, `Put`, and `Delete` methods to register routes
+- `Handle`, `HandleFunc`, `Get`, `Post`, `Put`, `Delete`, `Patch`, `Options`, `Head`, and `Any` methods to register routes
 - parameterized routes with `:param` and `*path`
+- trie-based route matching for faster path lookup
 - middleware support for both `App` and each `Router`
 - nested route groups via `App.NewRouter`, `Router.NewRouter`, and `App.Group`
 - custom `404` and `405` handlers via `App.NotFoundHandler` and `App.MethodNotAllowedHandler`
@@ -126,6 +127,22 @@ Registers a handler for the given route and one or more HTTP methods.
 ### `(*App) HandleFunc(route string, handler func(http.ResponseWriter, *http.Request), methods ...string)`
 
 Registers a handler function for the given route and one or more HTTP methods.
+
+### `(*App) Patch(route string, handler func(http.ResponseWriter, *http.Request))`
+
+Registers a handler for HTTP PATCH requests at the given route.
+
+### `(*App) Options(route string, handler func(http.ResponseWriter, *http.Request))`
+
+Registers a handler for HTTP OPTIONS requests at the given route.
+
+### `(*App) Head(route string, handler func(http.ResponseWriter, *http.Request))`
+
+Registers a handler for HTTP HEAD requests at the given route.
+
+### `(*App) Any(route string, handler func(http.ResponseWriter, *http.Request))`
+
+Registers a handler for all standard HTTP methods at the given route.
 
 ### `(*Router) HandleFunc(route string, handler func(http.ResponseWriter, *http.Request), methods ...string)`
 
