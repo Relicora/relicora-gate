@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.3.1] - 2026-08-01
+### Fixed
+- Allow registering the same route path with different HTTP methods
+- Return correct `Allow` header for method-mismatched requests
+
 ## [v0.3.0] - 2026-07-14
 ### Added
 - New `App` method `Shutdown`: perform graceful server shutdown

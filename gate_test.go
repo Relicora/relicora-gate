@@ -179,6 +179,51 @@ func TestRouterNestedAndMiddleware(t *testing.T) {
 	}
 }
 
+func TestAppRouteMethodCollision(t *testing.T) {
+	app := New()
+	app.Get("/item", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("get item"))
+	})
+	app.Post("/item", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("create item"))
+	})
+
+	rr := httptest.NewRecorder()
+	app.rootMux.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/item", nil))
+	if rr.Code != http.StatusOK || rr.Body.String() != "get item" {
+		t.Fatalf("expected GET /item to return get item, got %d %q", rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	app.rootMux.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/item", nil))
+	if rr.Code != http.StatusOK || rr.Body.String() != "create item" {
+		t.Fatalf("expected POST /item to return create item, got %d %q", rr.Code, rr.Body.String())
+	}
+}
+
+func TestRouterRouteMethodCollision(t *testing.T) {
+	app := New()
+	r := app.NewRouter("/api")
+	r.Get("/item", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("get item"))
+	})
+	r.Post("/item", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("create item"))
+	})
+
+	rr := httptest.NewRecorder()
+	app.rootMux.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/item", nil))
+	if rr.Code != http.StatusOK || rr.Body.String() != "get item" {
+		t.Fatalf("expected GET /api/item to return get item, got %d %q", rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	app.rootMux.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/item", nil))
+	if rr.Code != http.StatusOK || rr.Body.String() != "create item" {
+		t.Fatalf("expected POST /api/item to return create item, got %d %q", rr.Code, rr.Body.String())
+	}
+}
+
 func TestAppPostPutDeleteRoutes(t *testing.T) {
 	app := New()
 	app.Post("/post", func(w http.ResponseWriter, r *http.Request) {

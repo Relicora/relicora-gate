@@ -8,7 +8,9 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 )
 
 // AppOption is a functional configuration option for an App.
@@ -45,6 +47,7 @@ func WithLogger(logger *log.Logger) AppOption {
 type App struct {
 	server      *http.Server
 	rootMux     *http.ServeMux
+	routeTable  map[string]map[string]http.Handler
 	middlewares []func(http.Handler) http.Handler
 	logger      *log.Logger
 	addrOption  string
@@ -79,6 +82,7 @@ func New(opts ...AppOption) *App {
 	app := &App{
 		server:      s,
 		rootMux:     rootMux,
+		routeTable:  make(map[string]map[string]http.Handler),
 		middlewares: make([]func(http.Handler) http.Handler, 0),
 		logger:      log.Default(),
 		addrOption:  "",
@@ -110,24 +114,67 @@ func methodHandler(method string, handler func(w http.ResponseWriter, r *http.Re
 	}
 }
 
+func allowMethods(methods map[string]http.Handler) string {
+	allowed := make([]string, 0, len(methods))
+	for method := range methods {
+		allowed = append(allowed, method)
+	}
+	sort.Strings(allowed)
+	return strings.Join(allowed, ", ")
+}
+
+func (a *App) addRoute(route, method string, handler http.Handler) {
+	if a.routeTable == nil {
+		a.routeTable = make(map[string]map[string]http.Handler)
+	}
+
+	methodHandlers, ok := a.routeTable[route]
+	if !ok {
+		methodHandlers = make(map[string]http.Handler)
+		a.routeTable[route] = methodHandlers
+		a.rootMux.HandleFunc(route, func(w http.ResponseWriter, r *http.Request) {
+			a.serveRoute(route, w, r)
+		})
+	}
+
+	methodHandlers[method] = handler
+}
+
+func (a *App) serveRoute(route string, w http.ResponseWriter, r *http.Request) {
+	methodHandlers, ok := a.routeTable[route]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	handler, ok := methodHandlers[r.Method]
+	if ok {
+		handler.ServeHTTP(w, r)
+		return
+	}
+
+	w.Header().Set("Allow", allowMethods(methodHandlers))
+	http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+}
+
 // Get registers a handler for HTTP GET requests at the given route.
 func (a *App) Get(route string, handler func(w http.ResponseWriter, r *http.Request)) {
-	a.rootMux.HandleFunc(route, methodHandler(http.MethodGet, handler))
+	a.addRoute(route, http.MethodGet, http.HandlerFunc(handler))
 }
 
 // Post registers a handler for HTTP POST requests at the given route.
 func (a *App) Post(route string, handler func(w http.ResponseWriter, r *http.Request)) {
-	a.rootMux.HandleFunc(route, methodHandler(http.MethodPost, handler))
+	a.addRoute(route, http.MethodPost, http.HandlerFunc(handler))
 }
 
 // Put registers a handler for HTTP PUT requests at the given route.
 func (a *App) Put(route string, handler func(w http.ResponseWriter, r *http.Request)) {
-	a.rootMux.HandleFunc(route, methodHandler(http.MethodPut, handler))
+	a.addRoute(route, http.MethodPut, http.HandlerFunc(handler))
 }
 
 // Delete registers a handler for HTTP DELETE requests at the given route.
 func (a *App) Delete(route string, handler func(w http.ResponseWriter, r *http.Request)) {
-	a.rootMux.HandleFunc(route, methodHandler(http.MethodDelete, handler))
+	a.addRoute(route, http.MethodDelete, http.HandlerFunc(handler))
 }
 
 // ListenAndServe applies registered middleware and starts the HTTP server.
