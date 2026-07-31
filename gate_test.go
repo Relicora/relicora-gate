@@ -104,13 +104,8 @@ func TestAppRoutingWithMiddleware(t *testing.T) {
 		w.Write([]byte("world"))
 	})
 
-	var handler http.Handler = app.rootMux
-	for i := len(app.middlewares) - 1; i >= 0; i-- {
-		handler = app.middlewares[i](handler)
-	}
-
 	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/hello", nil))
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/hello", nil))
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
@@ -123,7 +118,7 @@ func TestAppRoutingWithMiddleware(t *testing.T) {
 	}
 
 	rr = httptest.NewRecorder()
-	handler.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/hello", nil))
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/hello", nil))
 	if rr.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected 405 for wrong method, got %d", rr.Code)
 	}
@@ -150,7 +145,7 @@ func TestRouterNestedAndMiddleware(t *testing.T) {
 	})
 
 	rr := httptest.NewRecorder()
-	app.rootMux.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/hello", nil))
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/hello", nil))
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200 for /api/hello, got %d", rr.Code)
@@ -163,7 +158,7 @@ func TestRouterNestedAndMiddleware(t *testing.T) {
 	}
 
 	rr = httptest.NewRecorder()
-	app.rootMux.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/ping", nil))
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/ping", nil))
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200 for /api/v1/ping, got %d", rr.Code)
@@ -173,7 +168,7 @@ func TestRouterNestedAndMiddleware(t *testing.T) {
 	}
 
 	rr = httptest.NewRecorder()
-	app.rootMux.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/hello", nil))
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/hello", nil))
 	if rr.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected 405 for POST to /api/hello, got %d", rr.Code)
 	}
@@ -189,13 +184,13 @@ func TestAppRouteMethodCollision(t *testing.T) {
 	})
 
 	rr := httptest.NewRecorder()
-	app.rootMux.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/item", nil))
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/item", nil))
 	if rr.Code != http.StatusOK || rr.Body.String() != "get item" {
 		t.Fatalf("expected GET /item to return get item, got %d %q", rr.Code, rr.Body.String())
 	}
 
 	rr = httptest.NewRecorder()
-	app.rootMux.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/item", nil))
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/item", nil))
 	if rr.Code != http.StatusOK || rr.Body.String() != "create item" {
 		t.Fatalf("expected POST /item to return create item, got %d %q", rr.Code, rr.Body.String())
 	}
@@ -212,13 +207,13 @@ func TestRouterRouteMethodCollision(t *testing.T) {
 	})
 
 	rr := httptest.NewRecorder()
-	app.rootMux.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/item", nil))
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/item", nil))
 	if rr.Code != http.StatusOK || rr.Body.String() != "get item" {
 		t.Fatalf("expected GET /api/item to return get item, got %d %q", rr.Code, rr.Body.String())
 	}
 
 	rr = httptest.NewRecorder()
-	app.rootMux.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/item", nil))
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/item", nil))
 	if rr.Code != http.StatusOK || rr.Body.String() != "create item" {
 		t.Fatalf("expected POST /api/item to return create item, got %d %q", rr.Code, rr.Body.String())
 	}
@@ -231,7 +226,7 @@ func TestAppHandleFuncAndNormalizeRoute(t *testing.T) {
 	}, http.MethodGet)
 
 	rr := httptest.NewRecorder()
-	app.rootMux.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/item", nil))
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/item", nil))
 	if rr.Code != http.StatusOK || rr.Body.String() != "normalized" {
 		t.Fatalf("expected GET /item to return normalized, got %d %q", rr.Code, rr.Body.String())
 	}
@@ -245,9 +240,82 @@ func TestRouterHandleAndNormalizeRoute(t *testing.T) {
 	}), http.MethodPost)
 
 	rr := httptest.NewRecorder()
-	app.rootMux.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/item", nil))
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/item", nil))
 	if rr.Code != http.StatusOK || rr.Body.String() != "normalized route" {
 		t.Fatalf("expected POST /api/item to return normalized route, got %d %q", rr.Code, rr.Body.String())
+	}
+}
+
+func TestRouterHandleFunc(t *testing.T) {
+	app := New()
+	r := app.NewRouter("api")
+	r.HandleFunc("hello", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("hello func"))
+	}, http.MethodGet)
+
+	rr := httptest.NewRecorder()
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/hello", nil))
+	if rr.Code != http.StatusOK || rr.Body.String() != "hello func" {
+		t.Fatalf("expected GET /api/hello to return hello func, got %d %q", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAppParameterizedRoute(t *testing.T) {
+	app := New()
+	app.Get("/users/:id", func(w http.ResponseWriter, r *http.Request) {
+		params := RouteParams(r)
+		w.Write([]byte(params["id"]))
+	})
+
+	rr := httptest.NewRecorder()
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/users/42", nil))
+	if rr.Code != http.StatusOK || rr.Body.String() != "42" {
+		t.Fatalf("expected GET /users/42 to return 42, got %d %q", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAppWildcardRoute(t *testing.T) {
+	app := New()
+	app.Get("/files/*path", func(w http.ResponseWriter, r *http.Request) {
+		params := RouteParams(r)
+		w.Write([]byte(params["path"]))
+	})
+
+	rr := httptest.NewRecorder()
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/files/css/main.css", nil))
+	if rr.Code != http.StatusOK || rr.Body.String() != "css/main.css" {
+		t.Fatalf("expected /files/css/main.css to return css/main.css, got %d %q", rr.Code, rr.Body.String())
+	}
+}
+
+func TestCustomNotFoundHandler(t *testing.T) {
+	app := New()
+	app.NotFoundHandler(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("custom not found"))
+	})
+
+	rr := httptest.NewRecorder()
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/missing", nil))
+	if rr.Code != http.StatusNotFound || rr.Body.String() != "custom not found" {
+		t.Fatalf("expected custom 404 response, got %d %q", rr.Code, rr.Body.String())
+	}
+}
+
+func TestCustomMethodNotAllowedHandler(t *testing.T) {
+	app := New()
+	app.Post("/login", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("ok"))
+	})
+	app.MethodNotAllowedHandler(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		w.Write([]byte("custom 405"))
+	})
+
+	rr := httptest.NewRecorder()
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/login", nil))
+	if rr.Code != http.StatusMethodNotAllowed || rr.Body.String() != "custom 405" {
+		t.Fatalf("expected custom 405 response, got %d %q", rr.Code, rr.Body.String())
 	}
 }
 
@@ -275,7 +343,7 @@ func TestAppPostPutDeleteRoutes(t *testing.T) {
 
 	for _, tt := range tests {
 		rr := httptest.NewRecorder()
-		app.rootMux.ServeHTTP(rr, httptest.NewRequest(tt.method, tt.path, nil))
+		app.ServeHTTP(rr, httptest.NewRequest(tt.method, tt.path, nil))
 		if rr.Code != http.StatusOK {
 			t.Fatalf("expected 200 for %s %s, got %d", tt.method, tt.path, rr.Code)
 		}
@@ -310,7 +378,7 @@ func TestRouterPostPutDeleteRoutes(t *testing.T) {
 
 	for _, tt := range tests {
 		rr := httptest.NewRecorder()
-		app.rootMux.ServeHTTP(rr, httptest.NewRequest(tt.method, tt.path, nil))
+		app.ServeHTTP(rr, httptest.NewRequest(tt.method, tt.path, nil))
 		if rr.Code != http.StatusOK {
 			t.Fatalf("expected 200 for %s %s, got %d", tt.method, tt.path, rr.Code)
 		}

@@ -2,7 +2,7 @@
 
 `relicora-gate` is a lightweight Go library for building HTTP applications with a simple router, middleware support, and nested routers.
 
-Current version: `v0.3.1`
+Current version: `v0.4.0`
 
 ## Overview
 
@@ -10,10 +10,11 @@ The library provides:
 
 - `App` as the main HTTP application container
 - functional options for configuring address, port, and logger
-- `Get`, `Post`, `Put`, `Delete` methods to register routes
+- `Handle`, `HandleFunc`, `Get`, `Post`, `Put`, and `Delete` methods to register routes
+- parameterized routes with `:param` and `*path`
 - middleware support for both `App` and each `Router`
-- nested routers via `App.NewRouter` and `Router.NewRouter`
-- automatic `405 Method Not Allowed` responses for wrong HTTP methods
+- nested route groups via `App.NewRouter`, `Router.NewRouter`, and `App.Group`
+- custom `404` and `405` handlers via `App.NotFoundHandler` and `App.MethodNotAllowedHandler`
 - a standalone `middleware` package for common middleware helpers
 
 ## Installation
@@ -125,6 +126,22 @@ Registers a handler for the given route and one or more HTTP methods.
 ### `(*App) HandleFunc(route string, handler func(http.ResponseWriter, *http.Request), methods ...string)`
 
 Registers a handler function for the given route and one or more HTTP methods.
+
+### `(*Router) HandleFunc(route string, handler func(http.ResponseWriter, *http.Request), methods ...string)`
+
+Registers a handler function on a router for the given route and HTTP methods.
+
+### `(*App) NotFoundHandler(handler func(http.ResponseWriter, *http.Request))`
+
+Registers a custom handler for unmatched routes.
+
+### `(*App) MethodNotAllowedHandler(handler func(http.ResponseWriter, *http.Request))`
+
+Registers a custom handler for requests that match a path but use an unsupported HTTP method.
+
+### `RouteParams(r *http.Request) map[string]string`
+
+Returns route parameters extracted from the current request when using parameterized routes.
 
 ### `(*App) Get/Post/Put/Delete(route string, handler func(http.ResponseWriter, *http.Request))`
 
