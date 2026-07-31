@@ -224,6 +224,33 @@ func TestRouterRouteMethodCollision(t *testing.T) {
 	}
 }
 
+func TestAppHandleFuncAndNormalizeRoute(t *testing.T) {
+	app := New()
+	app.HandleFunc("item/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("normalized"))
+	}, http.MethodGet)
+
+	rr := httptest.NewRecorder()
+	app.rootMux.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/item", nil))
+	if rr.Code != http.StatusOK || rr.Body.String() != "normalized" {
+		t.Fatalf("expected GET /item to return normalized, got %d %q", rr.Code, rr.Body.String())
+	}
+}
+
+func TestRouterHandleAndNormalizeRoute(t *testing.T) {
+	app := New()
+	r := app.NewRouter("api")
+	r.Handle("item/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("normalized route"))
+	}), http.MethodPost)
+
+	rr := httptest.NewRecorder()
+	app.rootMux.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/item", nil))
+	if rr.Code != http.StatusOK || rr.Body.String() != "normalized route" {
+		t.Fatalf("expected POST /api/item to return normalized route, got %d %q", rr.Code, rr.Body.String())
+	}
+}
+
 func TestAppPostPutDeleteRoutes(t *testing.T) {
 	app := New()
 	app.Post("/post", func(w http.ResponseWriter, r *http.Request) {

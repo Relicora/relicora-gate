@@ -118,6 +118,14 @@ Supported options:
 
 Adds middleware to the entire application. Middleware is executed in the order it is added.
 
+### `(*App) Handle(route string, handler http.Handler, methods ...string)`
+
+Registers a handler for the given route and one or more HTTP methods.
+
+### `(*App) HandleFunc(route string, handler func(http.ResponseWriter, *http.Request), methods ...string)`
+
+Registers a handler function for the given route and one or more HTTP methods.
+
 ### `(*App) Get/Post/Put/Delete(route string, handler func(http.ResponseWriter, *http.Request))`
 
 Registers a route on the main `ServeMux`.

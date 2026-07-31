@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.3.2] - 2026-08-01
+### Added
+- `App.Handle` and `App.HandleFunc` for registering handlers with multiple HTTP methods
+- Router `Handle` for grouped method registration
+
+### Fixed
+- normalized route paths and router prefixes for consistent route registration
+- normalized HTTP methods to uppercase during route registration
+
 ## [v0.3.1] - 2026-08-01
 ### Fixed
 - Allow registering the same route path with different HTTP methods
