@@ -71,6 +71,36 @@ func (a *App) resolveAddr() string {
 	return net.JoinHostPort(a.addrOption, strconv.Itoa(a.port))
 }
 
+func normalizeRoute(route string) string {
+	if route == "" {
+		return "/"
+	}
+	if !strings.HasPrefix(route, "/") {
+		route = "/" + route
+	}
+	if len(route) > 1 {
+		route = strings.TrimRight(route, "/")
+	}
+	return route
+}
+
+func normalizePrefix(prefix string) string {
+	if prefix == "" || prefix == "/" {
+		return ""
+	}
+	if !strings.HasPrefix(prefix, "/") {
+		prefix = "/" + prefix
+	}
+	return strings.TrimRight(prefix, "/")
+}
+
+func normalizeMethod(method string) string {
+	if method == "" {
+		return http.MethodGet
+	}
+	return strings.ToUpper(strings.TrimSpace(method))
+}
+
 // New creates a new App with optional configuration options.
 // The default server address is ":8080" unless overridden.
 func New(opts ...AppOption) *App {
@@ -124,6 +154,8 @@ func allowMethods(methods map[string]http.Handler) string {
 }
 
 func (a *App) addRoute(route, method string, handler http.Handler) {
+	route = normalizeRoute(route)
+
 	if a.routeTable == nil {
 		a.routeTable = make(map[string]map[string]http.Handler)
 	}
@@ -157,35 +189,55 @@ func (a *App) serveRoute(route string, w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 }
 
+// Handle registers a handler for the given route and HTTP methods.
+func (a *App) Handle(route string, handler http.Handler, methods ...string) {
+	if len(methods) == 0 {
+		methods = []string{http.MethodGet}
+	}
+	for _, method := range methods {
+		a.addRoute(route, normalizeMethod(method), handler)
+	}
+}
+
+// HandleFunc registers a handler function for the given route and HTTP methods.
+func (a *App) HandleFunc(route string, handler func(w http.ResponseWriter, r *http.Request), methods ...string) {
+	a.Handle(route, http.HandlerFunc(handler), methods...)
+}
+
 // Get registers a handler for HTTP GET requests at the given route.
 func (a *App) Get(route string, handler func(w http.ResponseWriter, r *http.Request)) {
-	a.addRoute(route, http.MethodGet, http.HandlerFunc(handler))
+	a.Handle(route, http.HandlerFunc(handler), http.MethodGet)
 }
 
 // Post registers a handler for HTTP POST requests at the given route.
 func (a *App) Post(route string, handler func(w http.ResponseWriter, r *http.Request)) {
-	a.addRoute(route, http.MethodPost, http.HandlerFunc(handler))
+	a.Handle(route, http.HandlerFunc(handler), http.MethodPost)
 }
 
 // Put registers a handler for HTTP PUT requests at the given route.
 func (a *App) Put(route string, handler func(w http.ResponseWriter, r *http.Request)) {
-	a.addRoute(route, http.MethodPut, http.HandlerFunc(handler))
+	a.Handle(route, http.HandlerFunc(handler), http.MethodPut)
 }
 
 // Delete registers a handler for HTTP DELETE requests at the given route.
 func (a *App) Delete(route string, handler func(w http.ResponseWriter, r *http.Request)) {
-	a.addRoute(route, http.MethodDelete, http.HandlerFunc(handler))
+	a.Handle(route, http.HandlerFunc(handler), http.MethodDelete)
+}
+
+// ServeHTTP applies registered middleware and serves the request.
+func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	var handler http.Handler = a.rootMux
+	for i := len(a.middlewares) - 1; i >= 0; i-- {
+		handler = a.middlewares[i](handler)
+	}
+	handler.ServeHTTP(w, r)
 }
 
 // ListenAndServe applies registered middleware and starts the HTTP server.
 // This method blocks until the server exits.
 func (a *App) ListenAndServe() error {
-	a.logger.Printf("[INFO]	Server starting...\n")
-	var handler http.Handler = a.rootMux
-	for i := len(a.middlewares) - 1; i >= 0; i-- {
-		handler = a.middlewares[i](handler)
-	}
-	a.server.Handler = handler
+	a.logger.Printf("[INFO]\tServer starting...\n")
+	a.server.Handler = a
 	a.logger.Printf("[INFO]	Server started at \"%s\"\n", a.server.Addr)
 	if err := a.server.ListenAndServe(); err != nil {
 		return err

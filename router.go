@@ -15,6 +15,7 @@ type Router struct {
 // NewRouter creates a nested router mounted under the specified prefix.
 // Requests beginning with the prefix are routed through the new Router.
 func (a *App) NewRouter(prefix string) *Router {
+	prefix = normalizePrefix(prefix)
 	routerMux := http.NewServeMux()
 	r := &Router{
 		routerMux:   routerMux,
@@ -29,6 +30,7 @@ func (a *App) NewRouter(prefix string) *Router {
 
 // NewRouter creates a child router under the current router prefix.
 func (r *Router) NewRouter(prefix string) *Router {
+	prefix = normalizePrefix(prefix)
 	routerMux := http.NewServeMux()
 	newRouter := &Router{
 		routerMux:   routerMux,
@@ -56,6 +58,9 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) addRoute(route, method string, handler http.Handler) {
+	route = normalizeRoute(route)
+	method = normalizeMethod(method)
+
 	if r.routeTable == nil {
 		r.routeTable = make(map[string]map[string]http.Handler)
 	}
@@ -89,22 +94,32 @@ func (r *Router) serveRoute(route string, w http.ResponseWriter, req *http.Reque
 	http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 }
 
+// Handle registers a handler for the given route and HTTP methods.
+func (r *Router) Handle(route string, handler http.Handler, methods ...string) {
+	if len(methods) == 0 {
+		methods = []string{http.MethodGet}
+	}
+	for _, method := range methods {
+		r.addRoute(route, method, handler)
+	}
+}
+
 // Get registers a handler for HTTP GET requests on this router.
 func (r *Router) Get(route string, handler func(w http.ResponseWriter, r *http.Request)) {
-	r.addRoute(route, http.MethodGet, http.HandlerFunc(handler))
+	r.Handle(route, http.HandlerFunc(handler), http.MethodGet)
 }
 
 // Post registers a handler for HTTP POST requests on this router.
 func (r *Router) Post(route string, handler func(w http.ResponseWriter, r *http.Request)) {
-	r.addRoute(route, http.MethodPost, http.HandlerFunc(handler))
+	r.Handle(route, http.HandlerFunc(handler), http.MethodPost)
 }
 
 // Put registers a handler for HTTP PUT requests on this router.
 func (r *Router) Put(route string, handler func(w http.ResponseWriter, r *http.Request)) {
-	r.addRoute(route, http.MethodPut, http.HandlerFunc(handler))
+	r.Handle(route, http.HandlerFunc(handler), http.MethodPut)
 }
 
 // Delete registers a handler for HTTP DELETE requests on this router.
 func (r *Router) Delete(route string, handler func(w http.ResponseWriter, r *http.Request)) {
-	r.addRoute(route, http.MethodDelete, http.HandlerFunc(handler))
+	r.Handle(route, http.HandlerFunc(handler), http.MethodDelete)
 }
