@@ -7,85 +7,138 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 )
 
 type routeEntry struct {
-	pattern    string
-	methods    map[string]http.Handler
-	segments   []string
-	paramNames []string
-	hasParams  bool
-	isWildcard bool
+	segment       string
+	pattern       string
+	methods       map[string]http.Handler
+	children      map[string]*routeEntry
+	paramChild    *routeEntry
+	wildcardChild *routeEntry
+	paramName     string
+	isWildcard    bool
+	router        *Router
 }
 
 type routeManager struct {
-	routeTable              map[string]*routeEntry
-	routeEntries            []*routeEntry
+	mu sync.RWMutex
+
+	root *routeEntry
+
+	routerMap      map[string]*Router
+	routerPrefixes []string
+
 	notFoundHandler         http.HandlerFunc
 	methodNotAllowedHandler http.HandlerFunc
 }
 
-func newRouteEntry(pattern string) *routeEntry {
-	entry := &routeEntry{
-		pattern:  pattern,
+func newRouteEntry(segment string) *routeEntry {
+	return &routeEntry{
+		segment:  segment,
 		methods:  make(map[string]http.Handler),
-		segments: routeSegments(pattern),
+		children: make(map[string]*routeEntry),
 	}
-
-	for _, segment := range entry.segments {
-		if strings.HasPrefix(segment, ":") {
-			entry.hasParams = true
-			entry.paramNames = append(entry.paramNames, strings.TrimPrefix(segment, ":"))
-		}
-		if strings.HasPrefix(segment, "*") {
-			entry.hasParams = true
-			entry.isWildcard = true
-			entry.paramNames = append(entry.paramNames, strings.TrimPrefix(segment, "*"))
-		}
-	}
-
-	return entry
 }
 
-func (rm *routeManager) addRoute(route, method string, handler http.Handler) {
+func (rm *routeManager) addRoute(route, method string, handler http.Handler, router *Router) {
 	route = normalizeRoute(route)
 	method = normalizeMethod(method)
 
-	if rm.routeTable == nil {
-		rm.routeTable = make(map[string]*routeEntry)
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+
+	if rm.root == nil {
+		rm.root = newRouteEntry("")
+		rm.root.pattern = "/"
 	}
 
-	entry, ok := rm.routeTable[route]
-	if !ok {
-		entry = newRouteEntry(route)
-		rm.routeTable[route] = entry
-		if entry.hasParams {
-			rm.routeEntries = append(rm.routeEntries, entry)
-			sortRouteEntries(rm.routeEntries)
+	node := rm.root
+	segments := routeSegments(route)
+	for i, segment := range segments {
+		if strings.HasPrefix(segment, "*") {
+			if node.wildcardChild == nil {
+				node.wildcardChild = newRouteEntry(segment)
+				node.wildcardChild.isWildcard = true
+				node.wildcardChild.paramName = strings.TrimPrefix(segment, "*")
+				node.wildcardChild.pattern = route
+				node.wildcardChild.router = router
+			}
+			node = node.wildcardChild
+			break
+		}
+
+		if strings.HasPrefix(segment, ":") {
+			if node.paramChild == nil {
+				node.paramChild = newRouteEntry(segment)
+				node.paramChild.paramName = strings.TrimPrefix(segment, ":")
+				node.paramChild.pattern = route
+				node.paramChild.router = router
+			}
+			node = node.paramChild
+			continue
+		}
+
+		child, ok := node.children[segment]
+		if !ok {
+			child = newRouteEntry(segment)
+			child.pattern = route
+			child.router = router
+			node.children[segment] = child
+		}
+		node = child
+		if i == len(segments)-1 {
+			node.pattern = route
+			node.router = router
 		}
 	}
 
-	entry.methods[method] = handler
+	if len(segments) == 0 {
+		node.pattern = route
+		node.router = router
+	}
+
+	if node.methods == nil {
+		node.methods = make(map[string]http.Handler)
+	}
+	if _, exists := node.methods[method]; exists {
+		return
+	}
+	node.methods[method] = handler
+	if node.router == nil {
+		node.router = router
+	}
 }
 
 func (rm *routeManager) matchRoute(path string) (*routeEntry, map[string]string, bool) {
+	rm.mu.RLock()
+	defer rm.mu.RUnlock()
+
+	if rm.root == nil {
+		return nil, nil, false
+	}
+
 	path = normalizeRoute(path)
+	segments := routeSegments(path)
+	params := make(map[string]string)
 
-	if exact, ok := rm.routeTable[path]; ok {
-		return exact, nil, true
+	node, ok := rm.root.matchSegments(segments, params)
+	if !ok || node == nil {
+		return nil, nil, false
 	}
 
-	for _, entry := range rm.routeEntries {
-		params, ok := entry.match(path)
-		if ok {
-			return entry, params, true
-		}
-	}
-
-	return nil, nil, false
+	return node, params, true
 }
 
 func (rm *routeManager) notFound(w http.ResponseWriter, r *http.Request) {
+	rm.mu.RLock()
+	defer rm.mu.RUnlock()
+
+	if router := rm.routerForPath(r.URL.Path); router != nil && router.notFoundHandler != nil {
+		router.notFoundHandler.ServeHTTP(w, r)
+		return
+	}
 	if rm.notFoundHandler != nil {
 		rm.notFoundHandler.ServeHTTP(w, r)
 		return
@@ -95,6 +148,14 @@ func (rm *routeManager) notFound(w http.ResponseWriter, r *http.Request) {
 
 func (rm *routeManager) methodNotAllowed(w http.ResponseWriter, r *http.Request, entry *routeEntry) {
 	w.Header().Set("Allow", entry.allowHeader())
+
+	rm.mu.RLock()
+	defer rm.mu.RUnlock()
+
+	if router := rm.routerForEntry(entry); router != nil && router.methodNotAllowedHandler != nil {
+		router.methodNotAllowedHandler.ServeHTTP(w, r)
+		return
+	}
 	if rm.methodNotAllowedHandler != nil {
 		rm.methodNotAllowedHandler.ServeHTTP(w, r)
 		return
@@ -103,11 +164,66 @@ func (rm *routeManager) methodNotAllowed(w http.ResponseWriter, r *http.Request,
 }
 
 func (rm *routeManager) setNotFoundHandler(handler http.HandlerFunc) {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+
 	rm.notFoundHandler = handler
 }
 
 func (rm *routeManager) setMethodNotAllowedHandler(handler http.HandlerFunc) {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+
 	rm.methodNotAllowedHandler = handler
+}
+
+func (rm *routeManager) registerRouter(prefix string, router *Router) {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+
+	if rm.routerMap == nil {
+		rm.routerMap = make(map[string]*Router)
+	}
+	if _, ok := rm.routerMap[prefix]; ok {
+		return
+	}
+	if rm.routerPrefixes == nil {
+		rm.routerPrefixes = make([]string, 0)
+	}
+
+	rm.routerMap[prefix] = router
+	rm.routerPrefixes = append(rm.routerPrefixes, prefix)
+	sort.SliceStable(rm.routerPrefixes, func(i, j int) bool {
+		if len(rm.routerPrefixes[i]) == len(rm.routerPrefixes[j]) {
+			return rm.routerPrefixes[i] > rm.routerPrefixes[j]
+		}
+		return len(rm.routerPrefixes[i]) > len(rm.routerPrefixes[j])
+	})
+}
+
+func (rm *routeManager) routerForPath(path string) *Router {
+	path = normalizeRoute(path)
+	for _, prefix := range rm.routerPrefixes {
+		if prefix == "" {
+			return rm.routerMap[prefix]
+		}
+		if strings.HasPrefix(path, prefix) {
+			if len(path) == len(prefix) || strings.HasPrefix(path[len(prefix):], "/") {
+				return rm.routerMap[prefix]
+			}
+		}
+	}
+	return nil
+}
+
+func (rm *routeManager) routerForEntry(entry *routeEntry) *Router {
+	if entry == nil {
+		return nil
+	}
+	if entry.router != nil {
+		return entry.router
+	}
+	return rm.routerForPath(entry.pattern)
 }
 
 func (rm *routeManager) serve(w http.ResponseWriter, r *http.Request) bool {
@@ -207,57 +323,35 @@ func (r *routeEntry) allowHeader() string {
 	return strings.Join(allowed, ", ")
 }
 
-func (r *routeEntry) match(path string) (map[string]string, bool) {
-	segments := routeSegments(path)
-	if !r.hasParams {
+func (r *routeEntry) matchSegments(segments []string, params map[string]string) (*routeEntry, bool) {
+	if len(segments) == 0 {
+		if len(r.methods) > 0 {
+			return r, true
+		}
 		return nil, false
 	}
 
-	if r.isWildcard {
-		if len(segments) < len(r.segments)-1 {
-			return nil, false
-		}
-	} else if len(segments) != len(r.segments) {
-		return nil, false
-	}
-
-	params := make(map[string]string)
-	for i, segment := range r.segments {
-		if strings.HasPrefix(segment, ":") {
-			params[strings.TrimPrefix(segment, ":")] = segments[i]
-			continue
-		}
-		if strings.HasPrefix(segment, "*") {
-			params[strings.TrimPrefix(segment, "*")] = strings.Join(segments[i:], "/")
-			return params, true
-		}
-		if segments[i] != segment {
-			return nil, false
+	segment := segments[0]
+	if child, ok := r.children[segment]; ok {
+		if node, ok2 := child.matchSegments(segments[1:], params); ok2 {
+			return node, true
 		}
 	}
 
-	return params, true
-}
-
-func routeEntryScore(r *routeEntry) int {
-	score := len(r.segments)
-	for _, segment := range r.segments {
-		if strings.HasPrefix(segment, ":") || strings.HasPrefix(segment, "*") {
-			score -= 1
+	if r.paramChild != nil {
+		params[r.paramChild.paramName] = segment
+		if node, ok2 := r.paramChild.matchSegments(segments[1:], params); ok2 {
+			return node, true
 		}
+		delete(params, r.paramChild.paramName)
 	}
-	return score
-}
 
-func sortRouteEntries(entries []*routeEntry) {
-	sort.SliceStable(entries, func(i, j int) bool {
-		iScore := routeEntryScore(entries[i])
-		jScore := routeEntryScore(entries[j])
-		if iScore == jScore {
-			return len(entries[i].segments) > len(entries[j].segments)
-		}
-		return iScore > jScore
-	})
+	if r.wildcardChild != nil {
+		params[r.wildcardChild.paramName] = strings.Join(segments, "/")
+		return r.wildcardChild, true
+	}
+
+	return nil, false
 }
 
 type routeParamsKey struct{}
@@ -270,5 +364,5 @@ func RouteParams(r *http.Request) map[string]string {
 	if params, ok := r.Context().Value(routeParamsKey{}).(map[string]string); ok {
 		return params
 	}
-	return nil
+	return make(map[string]string)
 }

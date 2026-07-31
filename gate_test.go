@@ -260,6 +260,74 @@ func TestRouterHandleFunc(t *testing.T) {
 	}
 }
 
+func TestHandleFuncRegistersAllMethodsWhenMissing(t *testing.T) {
+	app := New()
+	app.HandleFunc("/multi", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(r.Method))
+	})
+
+	rr := httptest.NewRecorder()
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/multi", nil))
+	if rr.Code != http.StatusOK || rr.Body.String() != http.MethodGet {
+		t.Fatalf("expected GET /multi to be registered, got %d %q", rr.Code, rr.Body.String())
+	}
+
+	rr = httptest.NewRecorder()
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/multi", nil))
+	if rr.Code != http.StatusOK || rr.Body.String() != http.MethodPost {
+		t.Fatalf("expected POST /multi to be registered, got %d %q", rr.Code, rr.Body.String())
+	}
+}
+
+func TestDuplicateMethodRegistrationIsIgnored(t *testing.T) {
+	app := New()
+	app.HandleFunc("/dup", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("first"))
+	}, http.MethodGet)
+	app.HandleFunc("/dup", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("second"))
+	}, http.MethodGet)
+
+	rr := httptest.NewRecorder()
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/dup", nil))
+	if rr.Code != http.StatusOK || rr.Body.String() != "first" {
+		t.Fatalf("expected duplicate GET /dup to keep first handler, got %d %q", rr.Code, rr.Body.String())
+	}
+}
+
+func TestRouterCustomNotFoundHandler(t *testing.T) {
+	app := New()
+	r := app.NewRouter("api")
+	r.NotFoundHandler(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("router not found"))
+	})
+
+	rr := httptest.NewRecorder()
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/missing", nil))
+	if rr.Code != http.StatusNotFound || rr.Body.String() != "router not found" {
+		t.Fatalf("expected router-level 404 response, got %d %q", rr.Code, rr.Body.String())
+	}
+}
+
+func TestRouterCustomMethodNotAllowedHandler(t *testing.T) {
+	app := New()
+	r := app.NewRouter("api")
+	r.Post("/login", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("ok"))
+	})
+	r.MethodNotAllowedHandler(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		w.Write([]byte("router custom 405"))
+	})
+
+	rr := httptest.NewRecorder()
+	app.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/login", nil))
+	if rr.Code != http.StatusMethodNotAllowed || rr.Body.String() != "router custom 405" {
+		t.Fatalf("expected router-level 405 response, got %d %q", rr.Code, rr.Body.String())
+	}
+}
+
 func TestAppParameterizedRoute(t *testing.T) {
 	app := New()
 	app.Get("/users/:id", func(w http.ResponseWriter, r *http.Request) {

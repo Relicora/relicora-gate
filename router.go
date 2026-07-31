@@ -6,35 +6,51 @@ import (
 
 // Router is a nested route container that supports its own middleware and routes.
 type Router struct {
-	app         *App
-	parent      *Router
-	middlewares []func(http.Handler) http.Handler
-	prefix      string
+	app                     *App
+	parent                  *Router
+	middlewares             []func(http.Handler) http.Handler
+	prefix                  string
+	notFoundHandler         http.HandlerFunc
+	methodNotAllowedHandler http.HandlerFunc
 }
 
 // NewRouter creates a nested router mounted under the specified prefix.
 func (a *App) NewRouter(prefix string) *Router {
-	return &Router{
+	r := &Router{
 		app:         a,
 		parent:      nil,
 		middlewares: make([]func(http.Handler) http.Handler, 0),
 		prefix:      normalizePrefix(prefix),
 	}
+	a.routes.registerRouter(r.prefix, r)
+	return r
 }
 
 // NewRouter creates a child router under the current router prefix.
 func (r *Router) NewRouter(prefix string) *Router {
-	return &Router{
+	rn := &Router{
 		app:         r.app,
 		parent:      r,
 		middlewares: make([]func(http.Handler) http.Handler, 0),
 		prefix:      r.prefix + normalizePrefix(prefix),
 	}
+	r.app.routes.registerRouter(rn.prefix, rn)
+	return rn
 }
 
 // AddMiddleware adds middleware specifically for this router.
 func (r *Router) AddMiddleware(middleware func(http.Handler) http.Handler) {
 	r.middlewares = append(r.middlewares, middleware)
+}
+
+// NotFoundHandler registers a custom handler for unmatched routes on this router.
+func (r *Router) NotFoundHandler(handler func(http.ResponseWriter, *http.Request)) {
+	r.notFoundHandler = http.HandlerFunc(handler)
+}
+
+// MethodNotAllowedHandler registers a custom handler for unsupported methods on this router.
+func (r *Router) MethodNotAllowedHandler(handler func(http.ResponseWriter, *http.Request)) {
+	r.methodNotAllowedHandler = http.HandlerFunc(handler)
 }
 
 // Use is an alias for AddMiddleware.
@@ -59,13 +75,21 @@ func (r *Router) wrapHandler(handler http.Handler) http.Handler {
 }
 
 func (r *Router) addRoute(route, method string, handler http.Handler) {
-	r.app.addRoute(r.prefix+normalizeRoute(route), method, r.wrapHandler(handler))
+	r.app.addRoute(r.prefix+normalizeRoute(route), method, r.wrapHandler(handler), r)
 }
 
 // Handle registers a handler for the given route and HTTP methods.
 func (r *Router) Handle(route string, handler http.Handler, methods ...string) {
 	if len(methods) == 0 {
-		methods = []string{http.MethodGet}
+		methods = []string{
+			http.MethodGet,
+			http.MethodPost,
+			http.MethodPut,
+			http.MethodPatch,
+			http.MethodDelete,
+			http.MethodOptions,
+			http.MethodHead,
+		}
 	}
 	for _, method := range methods {
 		r.addRoute(route, normalizeMethod(method), handler)
@@ -100,4 +124,24 @@ func (r *Router) Put(route string, handler func(w http.ResponseWriter, r *http.R
 // Delete registers a handler for HTTP DELETE requests on this router.
 func (r *Router) Delete(route string, handler func(w http.ResponseWriter, r *http.Request)) {
 	r.Handle(route, http.HandlerFunc(handler), http.MethodDelete)
+}
+
+// Patch registers a handler for HTTP PATCH requests on this router.
+func (r *Router) Patch(route string, handler func(w http.ResponseWriter, r *http.Request)) {
+	r.Handle(route, http.HandlerFunc(handler), http.MethodPatch)
+}
+
+// Options registers a handler for HTTP OPTIONS requests on this router.
+func (r *Router) Options(route string, handler func(w http.ResponseWriter, r *http.Request)) {
+	r.Handle(route, http.HandlerFunc(handler), http.MethodOptions)
+}
+
+// Head registers a handler for HTTP HEAD requests on this router.
+func (r *Router) Head(route string, handler func(w http.ResponseWriter, r *http.Request)) {
+	r.Handle(route, http.HandlerFunc(handler), http.MethodHead)
+}
+
+// Any registers a handler for all standard HTTP methods on this router.
+func (r *Router) Any(route string, handler func(w http.ResponseWriter, r *http.Request)) {
+	r.Handle(route, http.HandlerFunc(handler), http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions, http.MethodHead)
 }

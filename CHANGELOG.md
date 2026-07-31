@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.4.1] - 2026-08-01
+### Added
+- `App` and `Router` helpers for `Patch`, `Options`, `Head`, and `Any`
+- trie-based route matching for faster route lookup and parameterized route resolution
+
+### Fixed
+- route lookup now uses a trie-based matcher instead of linear parameterized route scanning
+- duplicate route registration for the same path and method keeps the first handler
+
 ## [v0.4.0] - 2026-08-01
 ### Added
 - parameterized routing with `:param` and `*path`

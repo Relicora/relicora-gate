@@ -148,8 +148,11 @@ func methodHandler(method string, handler func(w http.ResponseWriter, r *http.Re
 	}
 }
 
-func (a *App) addRoute(route, method string, handler http.Handler) {
-	a.routes.addRoute(route, method, handler)
+func (a *App) addRoute(route, method string, handler http.Handler, router *Router) {
+	if router != nil {
+		a.routes.registerRouter(router.prefix, router)
+	}
+	a.routes.addRoute(route, method, handler, router)
 }
 
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -193,10 +196,18 @@ func (a *App) Group(prefix string) *Router {
 // Handle registers a handler for the given route and HTTP methods.
 func (a *App) Handle(route string, handler http.Handler, methods ...string) {
 	if len(methods) == 0 {
-		methods = []string{http.MethodGet}
+		methods = []string{
+			http.MethodGet,
+			http.MethodPost,
+			http.MethodPut,
+			http.MethodPatch,
+			http.MethodDelete,
+			http.MethodOptions,
+			http.MethodHead,
+		}
 	}
 	for _, method := range methods {
-		a.addRoute(route, normalizeMethod(method), handler)
+		a.addRoute(route, normalizeMethod(method), handler, nil)
 	}
 }
 
@@ -223,6 +234,26 @@ func (a *App) Put(route string, handler func(w http.ResponseWriter, r *http.Requ
 // Delete registers a handler for HTTP DELETE requests at the given route.
 func (a *App) Delete(route string, handler func(w http.ResponseWriter, r *http.Request)) {
 	a.Handle(route, http.HandlerFunc(handler), http.MethodDelete)
+}
+
+// Patch registers a handler for HTTP PATCH requests at the given route.
+func (a *App) Patch(route string, handler func(w http.ResponseWriter, r *http.Request)) {
+	a.Handle(route, http.HandlerFunc(handler), http.MethodPatch)
+}
+
+// Options registers a handler for HTTP OPTIONS requests at the given route.
+func (a *App) Options(route string, handler func(w http.ResponseWriter, r *http.Request)) {
+	a.Handle(route, http.HandlerFunc(handler), http.MethodOptions)
+}
+
+// Head registers a handler for HTTP HEAD requests at the given route.
+func (a *App) Head(route string, handler func(w http.ResponseWriter, r *http.Request)) {
+	a.Handle(route, http.HandlerFunc(handler), http.MethodHead)
+}
+
+// Any registers a handler for all standard HTTP methods at the given route.
+func (a *App) Any(route string, handler func(w http.ResponseWriter, r *http.Request)) {
+	a.Handle(route, http.HandlerFunc(handler), http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions, http.MethodHead)
 }
 
 // ListenAndServe applies registered middleware and starts the HTTP server.
